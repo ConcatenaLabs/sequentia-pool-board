@@ -36,7 +36,7 @@ empty column on a public page is the failure this prevents.
 
 The node side of the same contract is asserted in
 `test/functional/feature_pos_pools.py` in the
-[Sequentia](https://github.com/GracedEternalKingCabbageMan/Sequentia) repo.
+[Sequentia](https://github.com/ConcatenaLabs/Sequentia) repo.
 
 ## Tests
 

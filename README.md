@@ -108,7 +108,7 @@ on either side fails the test rather than silently emptying a column on a public
 
 - Node, RPCs (`listpools`, `delegatestake`, `undelegatestake`, `listdelegations`,
   `announcepayout`) and the consensus design:
-  [Sequentia](https://github.com/GracedEternalKingCabbageMan/Sequentia), and
+  [Sequentia](https://github.com/ConcatenaLabs/Sequentia), and
   `doc/sequentia/04-proof-of-stake.md` §2 there for the delegation and payout-record design.
 - Starting a pool is a node operation and is only offered in the desktop node wallet's
   Staking tab. Other wallets delegate and leave; they do not run pools.
