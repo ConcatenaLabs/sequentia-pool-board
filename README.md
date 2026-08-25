@@ -59,8 +59,8 @@ SEQ_POOLS_PORT=8091 python3 pool-board-server.py
 | `SEQ_POOLS_BIND` | `127.0.0.1` | listen address; keep it loopback behind a front-end |
 | `SEQ_POOLS_PAGE` | *(this directory)* | where `index.html` lives, so the server can serve it too |
 
-The node it reads must be **Sequentia Core 24.3.0 or later** (`listpools` first shipped
-there; the current release is 24.5.2).
+The node it reads must be **Sequentia Core 24.3.0 or later**, the release `listpools`
+first shipped in.
 The node needs no wallet and must not be a block producer: a read-only follower is exactly
 right, and keeping it separate from any node people rely on means a board restart cannot
 disturb them.
