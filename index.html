@@ -118,9 +118,12 @@
     the cost of arriving in occasional lumps instead of steadily. A <em>direct</em> policy names an address that
     every block must pay, so the operator cannot silently redirect the reward, but the chain does not check that
     the address shares anything with you.</p>
-    <p><strong>Reliability is the number nobody advertises.</strong> A pool holding a tenth of the network's stake
-    should produce about a tenth of the blocks. Well under that means it is offline, missing its slots or losing
-    races, and its delegators are earning nothing for the weight they lent it.</p>
+    <p><strong>Reliability is the thing nobody advertises.</strong> A pool holding a tenth of the network's stake
+    should produce about a tenth of the blocks. The Reliability column compares the blocks a pool actually
+    produced over the recent window with the number its stake entitled it to: <em>producing its share</em> means
+    it is doing its job, <em>missing some blocks</em> means it is dropping slots, and <em>mostly offline</em> means
+    its delegators are earning nothing for the weight they lent it. Producing more than its share happens by
+    chance over a short window and is not a fault.</p>
   </div>
 
   <h2>Running one</h2>
@@ -264,10 +267,21 @@ function render(){
         shows on this page from the moment it is announced, and takes effect after the notice period.
       </div></td></tr>`;
   } else $('rows').innerHTML = sorted.map(p => {
+    // Reliability is produced-over-expected, but a ratio means nothing to a
+    // delegator. Say what it means: whether the pool is producing the blocks
+    // its stake entitles it to, and the two counts behind that in words.
     const rel = p.reliability;
-    const relCell = rel === undefined ? '<span class="muted">not owed any</span>' :
-      `${rel.toFixed(2)}<div class="meter"><i style="width:${Math.min(100, rel*100)}%"></i></div>
-       <span class="muted">${p.blocks_produced} of ${p.blocks_expected.toFixed(1)}</span>`;
+    const expectedWords = p.blocks_expected === undefined ? '' :
+      p.blocks_expected < 1 ? 'fewer than 1 expected for its stake' :
+      `about ${Math.round(p.blocks_expected)} expected for its stake`;
+    const relVerdict = rel === undefined ? '' :
+      rel >= 0.9 ? '<span class="badge b-ok">producing its share</span>' :
+      rel >= 0.6 ? '<span class="badge b-warn">missing some blocks</span>' :
+                   '<span class="badge b-bad">mostly offline</span>';
+    const relCell = rel === undefined
+      ? `<span class="muted">not owed any blocks yet</span>`
+      : `${relVerdict}<div class="meter"><i style="width:${Math.min(100, rel*100)}%"></i></div>
+         <span class="muted">${p.blocks_produced} block${p.blocks_produced === 1 ? '' : 's'} in the last ${d.window ? d.window.toLocaleString('en-US') : ''}, ${expectedWords}</span>`;
     const flags =
       (!p.eligible ? '<span class="badge b-bad">below minimum</span>' : '') +
       ((p.policy_pending||[]).length ? '<span class="badge b-warn">change announced</span>' : '') +
