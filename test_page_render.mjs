@@ -28,8 +28,8 @@ const FIXTURE = {
   notice_blocks: 1440,
   block_seconds: 60,
   window: 500,
-  declared_pools: 2,
-  stakers: 4,
+  declared_pools: 3,
+  stakers: 5,
   generated_at: Math.floor(Date.now() / 1000),
   pools: [
     {
@@ -66,6 +66,16 @@ const FIXTURE = {
       policy_pending: [],
       pot: { ['5a'.repeat(32)]: 0.00012345 },
       pot_outputs: 3,
+    },
+    {
+      // Declared, producing nothing: must read as offline, with its counts.
+      signer: '03' + '77'.repeat(32),
+      declared: true,
+      weight: 800000000000, own_weight: 800000000000, delegated_weight: 0,
+      delegators: 0, network_share: 0.1, eligible: true, committee_ready: true,
+      blocks_produced: 0, blocks_expected: 50.0, reliability: 0,
+      payout: 'no policy committed: this pool keeps everything the blocks it produces earn',
+      policy_pending: [],
     },
     {
       signer: '02' + 'ef'.repeat(32),
@@ -115,49 +125,57 @@ const declaredPools = feed.pools.filter((p) => p.declared !== false);
 check((rows.match(/<tr class="row"/g) || []).length === declaredPools.length,
   `one row per DECLARED pool (${declaredPools.length} of ${feed.pools.length} signers)`);
 for (const p of feed.pools.filter((x) => x.declared === false)) {
-  check(!rows.includes(p.signer.slice(0, 10)),
+  check(!rows.includes(p.signer.slice(0, 8)),
     'a staker that never declared is not listed as a pool');
 }
-check(stats.includes('Other stakers'), 'the undeclared stakers are still counted');
+check(/other staker/.test(status), 'the undeclared stakers are still counted');
 check(!rows.includes('undefined') && !stats.includes('undefined'), 'nothing renders as "undefined"');
 check(!rows.includes('NaN') && !stats.includes('NaN') && !pending.includes('NaN'), 'nothing renders as NaN');
-check(status.includes('pool(s)'), 'the status line renders');
-if (!declaredPools.length) {
-  check(rows.includes('No pool has declared itself yet'),
-    'with nothing declared, the board explains itself rather than showing a blank table');
-}
+check(/\d pools?,/.test(status), 'the status line renders');
 
-// The honest defaults have to survive rendering; they are the reason the board
-// exists, and a blank column would read as "nothing to worry about".
+// The payout column carries the standard names, never the node's prose; the
+// prose is kept in the detail row, escaped.
+for (const p of declaredPools) {
+  const want = p.policy_in_force ? ({split:'Proportional', lottery:'Lottery', direct:'Fixed address'})[p.policy_in_force.mode] : 'None';
+  check(rows.includes(`<span class="mode">${want}</span>`), `payout column says "${want}" for ${p.signer.slice(0, 8)}`);
+}
+check(!rows.includes('drawn by stake weight'), 'the payout column is not a paragraph');
+if (declaredPools.some(p => p.policy_in_force && p.policy_in_force.commission_bp === 500)) {
+  check(/>5%</.test(rows), 'a 5% fee renders as 5%');
+}
 if (declaredPools.some(p => !p.policy_in_force)) {
-  check(rows.includes('keeps everything'), 'a pool with no policy says it keeps everything');
+  check(/>all</.test(rows), 'a pool with no policy shows the operator keeps all');
 }
-// A pool producing nothing must show its zero rather than be skipped or blank.
+// Production: a verdict in words plus the two counts; a pool owed nothing is
+// "not yet due", never "offline".
 if (declaredPools.some(p => p.reliability === 0)) {
-  check(/>0\.00</.test(rows) || rows.includes('0.00'), 'a pool at reliability 0 shows it');
+  check(rows.includes('Offline'), 'a pool producing nothing is called offline');
+  check(/0 produced, \d+ expected/.test(rows), 'with its counts');
 }
-// A pool owed nothing is not "unreliable"; it must not render as 0.00.
+if (declaredPools.some(p => p.reliability >= 0.9)) {
+  check(rows.includes('On target'), 'a pool producing its share is on target');
+}
 if (declaredPools.some(p => p.reliability === undefined && p.blocks_expected === 0)) {
-  check(rows.includes('not owed any'), 'a pool owed no blocks is not called unreliable');
+  check(rows.includes('Not yet due'), 'a pool owed no blocks is not called offline');
+}
+if (declaredPools.some(p => !p.committee_ready)) {
+  check(rows.includes('Cannot certify blocks'), 'a pool without a committee key is flagged');
 }
 // The audit surface: an announced change belongs above the table with a deadline.
 if (declaredPools.some(p => (p.policy_pending || []).length)) {
   check(pending.includes('Announced changes'), 'a pending change is pulled to the top');
   check(/blocks \(about /.test(pending), 'the pending change carries a deadline');
+  check(rows.includes('Change announced'), 'and the row is flagged');
 }
-
-// The split mode must render as itself, never fall through to "direct".
 if (declaredPools.some(p => (p.policy_pending||[]).some(q => q.mode === 'split'))) {
-  check(pending.includes('proportional split'), 'a pending split policy is named, not called direct');
+  check(pending.includes('Proportional'), 'a pending split policy is named, not called direct');
 }
-if (declaredPools.some(p => p.policy_in_force && p.policy_in_force.mode === 'split')) {
-  check(rows.includes('proportional share'), "a split pool's payout line renders");
-}
-check(api.policyLine({mode:'split', commission_bp: 200}) === 'proportional split, 2.00% commission',
-  'policyLine knows the split mode');
+check(api.policyLine({mode:'split', commission_bp: 200}) === 'Proportional, 2% fee', 'policyLine names the split mode and its fee');
+check(api.policyLine({mode:'lottery', commission_bp: 1050}) === 'Lottery, 10.5% fee', 'policyLine keeps a fractional fee');
+check(api.policyLine({mode:'direct'}) === 'Fixed address', 'policyLine names the direct mode');
 check(/blocks \(about /.test(api.whenBinds(1440, feed.block_seconds)), 'whenBinds renders a deadline');
 check(api.seq(100000000) === '1', 'seq() renders 1e8 atoms as 1');
-
+check(api.seq(277499999990000) === '2.77M', 'seq() abbreviates millions');
 
 // The empty board is the state the live chain is in until someone declares, so
 // it has to explain itself rather than look broken or look like an empty network.
@@ -173,12 +191,12 @@ check(api.seq(100000000) === '1', 'seq() renders 1e8 atoms as 1');
     async () => ({ ok: true, json: async () => emptyFeed }), () => 0, console);
   await api2.load();
   const empty = n2.rows.innerHTML;
-  check(empty.includes('No pool has declared itself yet'), 'an empty board says why it is empty');
+  check(empty.includes('No pools yet'), 'an empty board says why it is empty');
   // How to appear is the desktop wallet's Staking tab, not a command: the UI
   // exists, so the page should not teach the CLI first.
   check(/Staking/.test(empty) && /Run a staking pool/.test(empty),
     'and says how an operator appears on it, via the wallet');
-  check(empty.includes('3 signer(s) are producing blocks'), 'and does not imply the network is empty');
+  check(empty.includes('3 stakers produce blocks'), 'and does not imply the network is empty');
   check(!empty.includes('undefined') && !empty.includes('NaN'), 'the empty state renders cleanly');
 }
 
