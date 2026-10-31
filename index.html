@@ -155,10 +155,11 @@
   <h2>Production</h2>
   <div class="card">
     <p>A pool holding a tenth of the network's stake should produce about a tenth of the blocks. The Production
-    column compares the blocks a pool produced over the last <span id="window-inline">500</span> blocks with the
-    number its stake entitled it to. <strong>On target</strong> is 90% or more, <strong>Missing blocks</strong>
-    is 60% to 90%, and <strong>Offline</strong> is below that, where delegators earn nothing for the weight they
-    lent. Running ahead of target over a short window is chance.</p>
+    column says when a pool last produced a block and compares the blocks it produced over the last
+    <span id="window-inline">500</span> blocks with the number its stake entitled it to. <strong>On target</strong>
+    is 90% or more and <strong>Missing blocks</strong> is anything less. <strong>Not producing</strong> means no
+    block at all where its stake was owed three or more: delegators there earn nothing for the weight they lend,
+    so this page does not offer it as a place to delegate. Running ahead of target over a short window is chance.</p>
   </div>
 
   <h2>Delegate</h2>
@@ -233,6 +234,34 @@ function whenBinds(blocksAway, blockSeconds){
   return `${blocksAway.toLocaleString('en-US')} blocks (about ${day}, ${time})`;
 }
 
+// "12 minutes ago". Block times come from the chain; a clock slightly ahead of
+// ours reads as "just now" rather than as the future.
+function ago(unix){
+  const s = Math.max(0, Date.now() / 1000 - unix);
+  if (s < 90) return 'just now';
+  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
+  if (s < 172800) return `${Math.round(s / 3600)} hours ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+// "about 8 hours": how long a run of blocks takes at the chain's cadence.
+function blocksSpan(blocks, blockSeconds){
+  const s = blocks * blockSeconds;
+  if (s < 5400) return `about ${Math.round(s / 60)} minutes`;
+  if (s < 172800) return `about ${Math.round(s / 3600)} hours`;
+  return `about ${Math.round(s / 86400)} days`;
+}
+
+// Whether a pool is producing, as one of five verdicts. "stopped" is the one
+// that matters to a delegator: no block at all where its stake was owed three
+// or more (zero by chance is then under a 1 in 20 event), so lending it weight
+// earns nothing. A pool owed fewer has simply not had its turn yet.
+const STOPPED_AFTER = 3;
+function production(p){
+  if (p.reliability === undefined) return 'due';
+  if (!p.blocks_produced) return p.blocks_expected >= STOPPED_AFTER ? 'stopped' : 'quiet';
+  return p.reliability >= 0.9 ? 'ok' : 'missing';
+}
+
 // The standard names of the payout types, used everywhere on the page. A
 // missing policy is a type of its own: the operator keeps everything.
 const MODE_NAME = {split: 'Proportional', lottery: 'Lottery', direct: 'Fixed address'};
@@ -296,7 +325,11 @@ function render(){
     if (k === 'reliability') return p.reliability === undefined ? -1 : p.reliability;
     return p[k] === undefined ? -1 : p[k];
   };
+  // A pool that is not producing goes below every pool that is, whatever the
+  // sort: it is listed so its delegators can see it, not offered to new ones.
   const sorted = declared.slice().sort((a,b) => {
+    const as = production(a) === 'stopped', bs = production(b) === 'stopped';
+    if (as !== bs) return as ? 1 : -1;
     const av = sortVal(a, SORT.key), bv = sortVal(b, SORT.key);
     if (av === bv) return a.signer < b.signer ? -1 : 1;
     return (SORT.desc ? 1 : -1) * (av < bv ? 1 : -1);
@@ -310,15 +343,27 @@ function render(){
       tab, <strong>Run a staking pool</strong>.</div></td></tr>`;
   } else $('rows').innerHTML = sorted.map(p => {
     const pol = p.policy_in_force;
-    // Production: a badge that says whether the pool produces the blocks its
-    // stake entitles it to, and the two counts behind it.
-    const rel = p.reliability;
-    const prodBadge = rel === undefined ? '<span class="badge">Not yet due</span>' :
-      rel >= 0.9 ? '<span class="badge b-ok">On target</span>' :
-      rel >= 0.6 ? '<span class="badge b-warn">Missing blocks</span>' :
-                   '<span class="badge b-bad">Offline</span>';
-    const prodCounts = rel === undefined ? '' :
-      `<div class="muted small">${p.blocks_produced} produced, ${Math.round(p.blocks_expected)} expected</div>`;
+    // Production in words: a verdict, when the pool last produced a block, and
+    // the blocks it produced over the window against the number its stake was owed.
+    const state = production(p);
+    const win = (d.window || 0).toLocaleString('en-US');
+    const winSpan = blocksSpan(d.window || 0, d.block_seconds || 60);
+    const prodBadge = {
+      due: '<span class="badge">Not yet due</span>',
+      ok: '<span class="badge b-ok">On target</span>',
+      missing: '<span class="badge b-warn">Missing blocks</span>',
+      quiet: '<span class="badge">No block yet</span>',
+      stopped: '<span class="badge b-bad">Not producing</span>',
+    }[state];
+    const expected = Math.round(p.blocks_expected);
+    const prodCounts = state === 'due' ? '' : state === 'stopped'
+      ? `<div class="small">No block in the last ${win} blocks (${esc(winSpan)}), where its stake was owed about
+         ${expected}. Delegating here earns nothing until it produces again.</div>`
+      : state === 'quiet'
+      ? `<div class="muted small">No block in the last ${win} blocks; its stake was owed fewer than ${STOPPED_AFTER}
+         in that time, so this is not yet a sign of trouble.</div>`
+      : (p.last_block_time ? `<div class="small">Last block ${esc(ago(p.last_block_time))}</div>` : '') +
+        `<div class="muted small">${p.blocks_produced} of the last ${win} blocks, about ${expected} expected</div>`;
     const flags =
       (!p.eligible ? '<span class="badge b-bad">Below minimum stake</span>' : '') +
       (!p.committee_ready ? '<span class="badge b-bad">Cannot certify blocks</span>' : '') +
@@ -335,7 +380,13 @@ function render(){
       <td data-l="Production">${prodBadge}${prodCounts}</td>
     </tr>` + (!open ? '' : `<tr class="detail"><td colspan="7"><div class="dgrid">
       <div><h4>Pool key</h4><pre class="hex">${esc(p.signer)}</pre></div>
-      <div><h4>Delegate from a node</h4><pre>sequentia-cli -rpcwallet=&lt;wallet&gt; delegatestake "${esc(p.signer)}"</pre></div>
+      ${state === 'stopped'
+        ? `<div><h4>Delegate</h4><p>Not offered. This pool has produced no block in the last ${win} blocks
+           (${esc(winSpan)}), so weight lent to it earns nothing until it produces again.</p></div>`
+        : `<div><h4>Delegate from a node</h4><pre>sequentia-cli -rpcwallet=&lt;wallet&gt; delegatestake "${esc(p.signer)}"</pre></div>`}
+      <div><h4>Last block</h4>${p.last_block_height
+        ? `<p>Height ${p.last_block_height.toLocaleString('en-US')}, ${esc(ago(p.last_block_time))}.</p>`
+        : `<p class="muted">None in the last ${win} blocks.</p>`}</div>
       <div><h4>Payout in force</h4>${pol
         ? `<p><span class="mode">${esc(policyLine(pol))}</span>, binding since height ${pol.activation.toLocaleString('en-US')}.</p>`
           + (pol.payout_script ? `<pre class="hex">${esc(pol.payout_script)}</pre>` : '')
@@ -366,7 +417,9 @@ function render(){
 
   const at = new Date((d.generated_at||Date.now()/1000)*1000);
   $('status').className = 'status';
-  $('status').textContent = `${sorted.length} pool${sorted.length === 1 ? '' : 's'}, ${others} other staker${others === 1 ? '' : 's'} ` +
+  const stopped = sorted.filter(p => production(p) === 'stopped').length;
+  $('status').textContent = `${sorted.length} pool${sorted.length === 1 ? '' : 's'}, ` +
+    (stopped ? `${stopped} of them not producing, ` : '') + `${others} other staker${others === 1 ? '' : 's'} ` +
     `producing for themselves. Height ${(d.height||0).toLocaleString('en-US')}, read at ${at.toLocaleTimeString('en-GB')}. ` +
     `Click a pool for its key, its commitment and its pot.`;
 }

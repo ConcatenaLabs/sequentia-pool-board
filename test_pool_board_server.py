@@ -69,6 +69,8 @@ SAMPLE = {
         "blocks_produced": 310,
         "blocks_expected": 312.5,
         "reliability": 0.992,
+        "last_block_height": 95998,
+        "last_block_time": 1790000000,
         "payout": "pays one delegator per block ... operator commission 5.00%",
         "policy_in_force": {"activation": 90000, "mode": "lottery", "commission_bp": 500},
         "policy_pending": [{"activation": 99000, "mode": "lottery",
@@ -263,6 +265,7 @@ class TestPageContract(unittest.TestCase):
         for field in ("signer", "declared", "weight", "own_weight", "delegated_weight",
                       "delegators", "network_share", "eligible", "committee_ready",
                       "blocks_produced", "blocks_expected", "reliability", "payout",
+                      "last_block_height", "last_block_time",
                       "policy_in_force", "policy_pending"):
             self.assertIn(field, pool_fields)
             self.assertIn(field, page, "index.html no longer reads pool.%s" % field)
