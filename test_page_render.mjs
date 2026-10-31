@@ -38,6 +38,7 @@ const FIXTURE = {
       weight: 5000000000000, own_weight: 1000000000000, delegated_weight: 4000000000000,
       delegators: 3, network_share: 0.625, eligible: true, committee_ready: true,
       blocks_produced: 310, blocks_expected: 312.5, reliability: 0.992,
+      last_block_height: 95998, last_block_time: Math.floor(Date.now() / 1000) - 720,
       payout: 'pays one delegator per block, drawn by stake weight ... commission 5.00%',
       policy_in_force: { activation: 90000, mode: 'lottery', commission_bp: 500 },
       policy_pending: [{ activation: 99000, mode: 'split', commission_bp: 1000, blocks_away: 3000 }],
@@ -61,6 +62,7 @@ const FIXTURE = {
       weight: 1000000000000, own_weight: 500000000000, delegated_weight: 500000000000,
       delegators: 2, network_share: 0.125, eligible: true, committee_ready: true,
       blocks_produced: 60, blocks_expected: 62.5, reliability: 0.96,
+      last_block_height: 95990, last_block_time: Math.floor(Date.now() / 1000) - 3 * 3600,
       payout: 'pays every delegator its exact proportional share (split): rewards pool up on-chain and anyone may trigger the payout, operator commission 2.00%. The proportional payout most delegators expect',
       policy_in_force: { activation: 91000, mode: 'split', commission_bp: 200 },
       policy_pending: [],
@@ -68,12 +70,24 @@ const FIXTURE = {
       pot_outputs: 3,
     },
     {
-      // Declared, producing nothing: must read as offline, with its counts.
+      // Declared, producing nothing where it was owed 50: must say it is not
+      // producing, sink below every producing pool, and not be offered.
       signer: '03' + '77'.repeat(32),
       declared: true,
       weight: 800000000000, own_weight: 800000000000, delegated_weight: 0,
       delegators: 0, network_share: 0.1, eligible: true, committee_ready: true,
       blocks_produced: 0, blocks_expected: 50.0, reliability: 0,
+      payout: 'no policy committed: this pool keeps everything the blocks it produces earn',
+      policy_pending: [],
+    },
+    {
+      // Declared, small, no block yet where it was owed about one: not yet a
+      // sign of trouble, so it must not be called "not producing".
+      signer: '02' + '44'.repeat(32),
+      declared: true,
+      weight: 20000000000, own_weight: 20000000000, delegated_weight: 0,
+      delegators: 0, network_share: 0.0025, eligible: true, committee_ready: true,
+      blocks_produced: 0, blocks_expected: 1.25, reliability: 0,
       payout: 'no policy committed: this pool keeps everything the blocks it produces earn',
       policy_pending: [],
     },
@@ -103,7 +117,8 @@ const mk = (id) => (nodes[id] = { id, innerHTML: '', textContent: '', className:
 const doc = { getElementById: (id) => nodes[id] || mk(id), querySelectorAll: () => [] };
 
 const api = new Function('document', 'fetch', 'setInterval', 'console',
-  script + '\nreturn {render, load, whenBinds, seq, pct, policyLine};')(
+  script + '\nreturn {render, load, whenBinds, seq, pct, policyLine, ago, blocksSpan, production,' +
+  ' open: (k) => { OPEN = k; render(); }};')(
   doc, async () => ({ ok: true, json: async () => feed }), () => 0, console);
 
 await api.load();
@@ -146,12 +161,43 @@ if (declaredPools.some(p => p.policy_in_force && p.policy_in_force.commission_bp
 if (declaredPools.some(p => !p.policy_in_force)) {
   check(/>all</.test(rows), 'a pool with no policy shows the operator keeps all');
 }
-// Production: a verdict in words plus the two counts; a pool owed nothing is
-// "not yet due", never "offline".
-if (declaredPools.some(p => p.reliability === 0)) {
-  check(rows.includes('Offline'), 'a pool producing nothing is called offline');
-  check(/0 produced, \d+ expected/.test(rows), 'with its counts');
+// Production: a verdict in words, when the pool last produced, and its counts;
+// a pool owed nothing is "not yet due", never "not producing".
+const stoppedPools = declaredPools.filter(p => !p.blocks_produced && p.blocks_expected >= 3);
+if (stoppedPools.length) {
+  check(rows.includes('Not producing'), 'a pool producing nothing where it was owed blocks says so');
+  check(/No block in the last [\d,]+ blocks \(about \d+ (minutes|hours|days)\)/.test(rows),
+    'in words, with the window as a span of time');
+  check(rows.includes('Delegating here earns nothing'), 'and says what that means for a delegator');
+  // Below every producing pool, whatever the sort.
+  const firstStopped = Math.min(...stoppedPools.map(p => rows.indexOf(p.signer)));
+  const lastProducing = Math.max(-1, ...declaredPools.filter(p => p.blocks_produced > 0).map(p => rows.indexOf(p.signer)));
+  check(firstStopped > lastProducing, 'a pool that is not producing sinks below every producing pool');
+  // Its detail does not offer a delegate command; a producing pool's does.
+  api.open(stoppedPools[0].signer);
+  const detail = nodes.rows.innerHTML;
+  check(detail.includes('Not offered') && !detail.includes(`delegatestake "${stoppedPools[0].signer}"`),
+    'a pool that is not producing is not offered as a place to delegate');
+  const live = declaredPools.find(p => p.blocks_produced > 0);
+  if (live) {
+    api.open(live.signer);
+    check(nodes.rows.innerHTML.includes(`delegatestake "${live.signer}"`), 'a producing pool is');
+  }
+  api.open(null);
 }
+if (declaredPools.some(p => !p.blocks_produced && p.blocks_expected > 0 && p.blocks_expected < 3)) {
+  check(rows.includes('No block yet'), 'a small pool owed under three blocks is not called not producing');
+  check(rows.includes('not yet a sign of trouble'), 'and says why');
+}
+if (declaredPools.some(p => p.last_block_time)) {
+  check(/Last block (just now|\d+ (minutes|hours|days) ago)/.test(rows), 'a producing pool says when it last produced');
+  check(/\d+ of the last [\d,]+ blocks, about \d+ expected/.test(rows), 'with its counts in words');
+}
+check(api.ago(Date.now() / 1000 - 720) === '12 minutes ago', 'ago() says minutes');
+check(api.ago(Date.now() / 1000 - 3 * 3600) === '3 hours ago', 'ago() says hours');
+check(api.ago(Date.now() / 1000 + 30) === 'just now', 'a block stamped slightly ahead reads as just now');
+check(api.blocksSpan(500, 60) === 'about 8 hours', 'blocksSpan() turns 500 blocks of 60 s into about 8 hours');
+check(api.production({reliability: undefined, blocks_expected: 0}) === 'due', 'owed nothing: not yet due');
 if (declaredPools.some(p => p.reliability >= 0.9)) {
   check(rows.includes('On target'), 'a pool producing its share is on target');
 }

@@ -20,7 +20,7 @@ Two files, no build step:
 Delegating on Sequentia is non-custodial by construction. The pool's key never appears in
 the staking output's spending condition, so a pool can never move a delegator's coins, and
 reclaiming the delegation needs nobody's cooperation. What a delegator *is* trusting a pool
-for is the reward, and that trust rests on two things being visible:
+for is the reward, and that trust rests on three things being visible:
 
 1. **What the pool has committed to.** A pool that has committed to nothing keeps every fee
    its blocks earn. That is the default rather than an abuse, and the board says so in
@@ -31,9 +31,12 @@ for is the reward, and that trust rests on two things being visible:
    inside its window is pulled to the top of the page with a countdown in blocks and an
    approximate date.
 
-`blocks_produced` against `blocks_expected` is the number nobody advertises: a pool holding
-a tenth of the network's stake should produce about a tenth of the blocks, and well under
-that means it is offline or missing its slots while its delegators earn nothing.
+3. **Whether the pool is producing.** Each pool says when it last produced a block and how
+   many of the recent blocks it produced against the number its stake was owed: a pool
+   holding a tenth of the network's stake should produce about a tenth of the blocks. A
+   pool with no block at all where it was owed three or more is marked **Not producing**,
+   listed below every pool that is, and not offered as a place to delegate, because weight
+   lent to it earns nothing.
 
 ## The feed
 
