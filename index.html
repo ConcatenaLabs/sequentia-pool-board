@@ -52,6 +52,8 @@
   pre{background:#0b0e12;border:1px solid var(--line);border-radius:8px;padding:10px 12px;overflow-x:auto;
       font-size:13px;margin:6px 0 0}
   pre.hex{white-space:pre-wrap;word-break:break-all}
+  /* A command wraps rather than scroll out of sight on a phone. */
+  pre{white-space:pre-wrap;overflow-wrap:anywhere}
   code{background:#0b0e12;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:13px}
   .status{color:var(--faint);font-size:13px;margin:10px 0 0}
   .err{color:#e88}
@@ -88,8 +90,8 @@
     <img src="/explorer/img/icons/SequentiaTestnet-menu-logo.svg" alt="Sequentia">
     <h1>Staking <span class="t">pools</span></h1>
   </div>
-  <p class="sub">Lend your stake's weight to a pool and share the rewards of the blocks it produces. Your coins
-  stay in your wallet, and you can leave at any time.</p>
+  <p class="sub">Stake the Sequence token (tSEQ on this testnet) with a pool and share the rewards of the blocks
+  it produces. Your coins stay in your wallet, and you can leave at any time.</p>
 
   <div class="stats" id="stats"></div>
   <div id="pending"></div>
@@ -165,6 +167,11 @@
   <h2>Delegate</h2>
   <div class="cards">
     <div class="card">
+      <h3>From the web wallet</h3>
+      <p>Open the web wallet and choose <strong>More &rarr; Stake</strong>. It lists these pools; pick one and
+      stake from what you hold, with no key to copy. <a href="/wallet/">Open the web wallet</a></p>
+    </div>
+    <div class="card">
       <h3>From Sequentia Core</h3>
       <p>Click a pool above for its key, paste it into the Staking tab and delegate. The tab shows what the pool
       has committed to, warns you when it announces a change, and leaves in one action. A registered stake is all you need; the
@@ -213,9 +220,12 @@ let DATA = null, SORT = {key:'weight', desc:true}, OPEN = null;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const shortKey = k => k.slice(0, 8) + '…' + k.slice(-6);
+// A pool key as the wallets show it: its first twelve characters.
+const shortKey = k => k.slice(0, 12) + '…';
 
-// Weight is atoms of the Sequence token (SEQ), 1 SEQ = 1e8 atoms.
+// Weight is atoms of the Sequence token, 1 coin = 1e8 atoms. This board shows
+// the testnet, whose ticker for it is tSEQ.
+const TICKER = 'tSEQ';
 function seq(atoms){
   const v = Number(atoms) / 1e8;
   if (v >= 1e6) return (v/1e6).toFixed(2).replace(/\.?0+$/,'') + 'M';
@@ -293,8 +303,8 @@ function render(){
 
   $('stats').innerHTML = [
     ['Pools', String(d.declared_pools ?? pools.length)],
-    ['Network stake', seq(d.network_weight) + ' SEQ'],
-    ['Minimum stake', seq(d.min_stake) + ' SEQ'],
+    ['Network stake', seq(d.network_weight) + ' ' + TICKER],
+    ['Minimum stake', seq(d.min_stake) + ' ' + TICKER],
     ['Notice period', (d.notice_blocks||0).toLocaleString('en-US') + ' blocks'],
   ].map(([k,v]) => `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join('');
   $('notice-inline').textContent = (d.notice_blocks||0).toLocaleString('en-US');
@@ -383,7 +393,8 @@ function render(){
       ${state === 'stopped'
         ? `<div><h4>Delegate</h4><p>Not offered. This pool has produced no block in the last ${win} blocks
            (${esc(winSpan)}), so weight lent to it earns nothing until it produces again.</p></div>`
-        : `<div><h4>Delegate from a node</h4><pre>sequentia-cli -rpcwallet=&lt;wallet&gt; delegatestake "${esc(p.signer)}"</pre></div>`}
+        : `<div><h4>Delegate</h4><p>From the web wallet: <strong>More &rarr; Stake</strong>, then <span class="key">Pool ${esc(shortKey(p.signer))}</span>.</p>
+           <p>From a node:</p><pre>sequentia-cli -rpcwallet=&lt;wallet&gt; delegatestake "${esc(p.signer)}"</pre></div>`}
       <div><h4>Last block</h4>${p.last_block_height
         ? `<p>Height ${p.last_block_height.toLocaleString('en-US')}, ${esc(ago(p.last_block_time))}.</p>`
         : `<p class="muted">None in the last ${win} blocks.</p>`}</div>
@@ -402,7 +413,7 @@ function render(){
             + `<p class="muted small">${p.pot_outputs||0} pot output${(p.pot_outputs||0) === 1 ? '' : 's'}. Anyone can pay it out with
                <code>claimpoolrewards</code>. Claim before leaving.</p>`
           : '<p class="muted">Empty.</p>'}</div>` : ''}
-      <div><h4>Stake</h4><p>${seq(p.own_weight)} SEQ own, ${seq(p.delegated_weight)} SEQ delegated.</p></div>
+      <div><h4>Stake</h4><p>${seq(p.own_weight)} ${TICKER} own, ${seq(p.delegated_weight)} ${TICKER} delegated.</p></div>
       </div></td></tr>`);
   }).join('');
 

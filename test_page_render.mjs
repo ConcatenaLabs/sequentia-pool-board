@@ -117,7 +117,7 @@ const mk = (id) => (nodes[id] = { id, innerHTML: '', textContent: '', className:
 const doc = { getElementById: (id) => nodes[id] || mk(id), querySelectorAll: () => [] };
 
 const api = new Function('document', 'fetch', 'setInterval', 'console',
-  script + '\nreturn {render, load, whenBinds, seq, pct, policyLine, ago, blocksSpan, production,' +
+  script + '\nreturn {render, load, shortKey, whenBinds, seq, pct, policyLine, ago, blocksSpan, production,' +
   ' open: (k) => { OPEN = k; render(); }};')(
   doc, async () => ({ ok: true, json: async () => feed }), () => 0, console);
 
@@ -219,6 +219,17 @@ if (declaredPools.some(p => (p.policy_pending||[]).some(q => q.mode === 'split')
 check(api.policyLine({mode:'split', commission_bp: 200}) === 'Proportional, 2% fee', 'policyLine names the split mode and its fee');
 check(api.policyLine({mode:'lottery', commission_bp: 1050}) === 'Lottery, 10.5% fee', 'policyLine keeps a fractional fee');
 check(api.policyLine({mode:'direct'}) === 'Fixed address', 'policyLine names the direct mode');
+
+// The testnet's ticker, the web wallet's way to delegate, and the wallets' way of
+// writing a pool key.
+{
+  const page = fs.readFileSync(HERE + 'index.html', 'utf8');
+  check(stats.includes(' tSEQ') && !/\d SEQ\b/.test(stats), 'stakes are in tSEQ');
+  check(page.includes('<h3>From the web wallet</h3>') && page.includes('More &rarr; Stake'),
+    'the Delegate section starts with the web wallet');
+  check(page.includes('Sequence token (tSEQ'), 'the page introduces the token by its name');
+  check(api.shortKey('039b14904955aa' + '0'.repeat(52)) === '039b14904955…', 'a pool key is cut as the wallet cuts it');
+}
 check(/blocks \(about /.test(api.whenBinds(1440, feed.block_seconds)), 'whenBinds renders a deadline');
 check(api.seq(100000000) === '1', 'seq() renders 1e8 atoms as 1');
 check(api.seq(277499999990000) === '2.77M', 'seq() abbreviates millions');
