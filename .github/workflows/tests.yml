@@ -1,0 +1,24 @@
+# The feed's tests and the page's render test on every pull request and on main: Python 3.12, the
+# testnet server's, for pool-board-server.py; Node 22 runs the page's own JavaScript in a minimal
+# DOM. Neither needs the network or a node.
+name: tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 test_pool_board_server.py
+      - run: node test_page_render.mjs
