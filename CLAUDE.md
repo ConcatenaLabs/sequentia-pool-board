@@ -48,8 +48,8 @@ node test_page_render.mjs
 The second one runs the page's own JavaScript over a feed in a minimal DOM, because
 grepping the page for field names catches a rename but not a page that throws halfway
 through building the table. Add a case to its fixture whenever you add a state the page
-renders differently. No network and no node required. Run them before every push; there is no CI here and the
-page is public.
+renders differently. No network and no node required. CI (`.github/workflows/tests.yml`) runs both on every pull request and on `main`; run them
+before every push too, since the page is public.
 
 ## Deploy
 
